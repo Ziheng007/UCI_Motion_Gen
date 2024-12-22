@@ -1,5 +1,7 @@
 # Self-Correcting Human Motion Synthesis with Video Analysis
 
+For trajectory_guidance, please check my reposity
+[trajectory_guidance](https://github.com/HuangZiheng-o-O/trajectory_guidance_pipeline_and_llm_enhanced_human_motion_generation)
 
 ## Acknowlegements
 
