@@ -4,7 +4,8 @@ from os.path import join as pjoin
 import torch
 from torch.utils.data import DataLoader
 
-from models.vq.model import RVQVAE
+from models.vq.model_multi import RVQVAE_Multi
+from models.vq.model_general_new import RVQVAE_Decode  
 from models.vq.vq_trainer import RVQTokenizerTrainer
 from options.vq_option import arg_parse
 from data.t2m_dataset import MotionDataset
@@ -61,9 +62,8 @@ if __name__ == "__main__":
         dataset_opt_path = './checkpoints/t2m/Comp_v6_KLD005/opt.txt'
 
     elif opt.dataset_name == "kit":
-        opt.data_root = '/extra/xielab0/araujog/motion-generation/KIT-ML'
-        # opt.motion_dir = pjoin(opt.data_root, 'new_joint_vecs')
-        opt.motion_dir = pjoin(opt.data_root, 'new_joints')
+        opt.data_root = './dataset/KIT-ML/'
+        opt.motion_dir = pjoin(opt.data_root, 'new_joint_vecs')
         opt.text_dir = pjoin(opt.data_root, 'texts')
         opt.joints_num = 21
         radius = 240 * 8
@@ -84,8 +84,7 @@ if __name__ == "__main__":
     train_split_file = pjoin(opt.data_root, 'train.txt')
     val_split_file = pjoin(opt.data_root, 'val.txt')
 
-
-    net = RVQVAE(opt,
+    teacher_net = RVQVAE_Multi(opt,
                 dim_pose,
                 opt.nb_code,
                 opt.code_dim,
@@ -96,16 +95,42 @@ if __name__ == "__main__":
                 opt.depth,
                 opt.dilation_growth_rate,
                 opt.vq_act,
-                opt.vq_norm,)
+                opt.vq_norm,
+                mean,
+                std)
+    if opt.teacher_net != './checkpoints':
+        opt_path = pjoin(opt.teacher_net, 'opt.txt')
+        vq_opt = get_opt(opt_path, opt.device)
+        ckpt = torch.load(pjoin(opt.teacher_net, 'model', 'latest.tar'),map_location=opt.device)
+        model_key = 'vq_model' if 'vq_model' in ckpt else 'net'
+        teacher_net.load_state_dict(ckpt[model_key])
+        print(f'Loading VQ Model {opt.teacher_net}')
 
+    net = RVQVAE_Decode(opt,
+                teacher_net,
+                dim_pose,
+                opt.nb_code,
+                opt.code_dim,
+                opt.code_dim,
+                opt.down_t,
+                opt.stride_t,
+                opt.width,
+                opt.depth,
+                opt.dilation_growth_rate,
+                opt.vq_act,
+                opt.vq_norm,
+                mean,
+                std,
+                teacher_net)
+    net.to(opt.device)
     pc_vq = sum(param.numel() for param in net.parameters())
     print(net)
-    # print("Total parameters of discriminator net: {}".format(pc_vq))
+    print("Total parameters of discriminator net: {}".format(pc_vq))
     # all_params += pc_vq_dis
 
     print('Total parameters of all models: {}M'.format(pc_vq/1000_000))
 
-    trainer = RVQTokenizerTrainer(opt, vq_model=net)
+    trainer = RVQTokenizerTrainer(opt, vq_model=teacher_net)
 
     train_dataset = MotionDataset(opt, mean, std, train_split_file)
     val_dataset = MotionDataset(opt, mean, std, val_split_file)

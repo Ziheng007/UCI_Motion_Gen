@@ -5,10 +5,10 @@ import numpy as np
 from torch.utils.data import DataLoader
 from os.path import join as pjoin
 
-from models.mask_transformer.transformer import ResidualTransformer
+from models.mask_transformer.transformer import ResidualTimesformer
 from models.mask_transformer.transformer_trainer import ResidualTransformerTrainer
-from models.vq.model import RVQVAE
-
+from models.vq.model_general import RVQVAE_Decode
+from models.vq.model_multi import RVQVAE_Multi
 from options.train_option import TrainT2MOptions
 
 from utils.plot_script import plot_3d_motion
@@ -33,10 +33,10 @@ def plot_t2m(data, save_dir, captions, m_lengths):
         # print(joint.shape)
         plot_3d_motion(save_path, kinematic_chain, joint, title=caption, fps=fps, radius=radius)
 
-def load_vq_model():
+def load_vq_model(mean,std):
     opt_path = pjoin(opt.checkpoints_dir, opt.dataset_name, opt.vq_name, 'opt.txt')
     vq_opt = get_opt(opt_path, opt.device)
-    vq_model = RVQVAE(vq_opt,
+    vq_model = RVQVAE_Decode(vq_opt,
                 dim_pose,
                 vq_opt.nb_code,
                 vq_opt.code_dim,
@@ -47,7 +47,9 @@ def load_vq_model():
                 vq_opt.depth,
                 vq_opt.dilation_growth_rate,
                 vq_opt.vq_act,
-                vq_opt.vq_norm)
+                vq_opt.vq_norm,
+                mean,
+                std)
     #TODO
     # ckpt = torch.load(pjoin(vq_opt.checkpoints_dir, vq_opt.dataset_name, vq_opt.name, 'model', 'net_best_fid.tar'),
     #                         map_location=opt.device)
@@ -103,7 +105,10 @@ if __name__ == '__main__':
 
     opt.text_dir = pjoin(opt.data_root, 'texts')
 
-    vq_model, vq_opt = load_vq_model()
+    mean = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, opt.vq_name, 'meta', 'mean.npy'))
+    std = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, opt.vq_name, 'meta', 'std.npy'))
+
+    vq_model, vq_opt = load_vq_model(mean,std)
 
     clip_version = 'ViT-B/32'
 
@@ -111,7 +116,7 @@ if __name__ == '__main__':
     opt.num_quantizers = vq_opt.num_quantizers
 
     # if opt.is_v2:
-    res_transformer = ResidualTransformer(code_dim=vq_opt.code_dim,
+    res_transformer = ResidualTimesformer(code_dim=vq_opt.code_dim,
                                           cond_mode='text',
                                           latent_dim=opt.latent_dim,
                                           ff_size=opt.ff_size,
@@ -149,9 +154,6 @@ if __name__ == '__main__':
     all_params += pc_transformer
 
     print('Total parameters of all models: {:.2f}M'.format(all_params / 1000_000))
-
-    mean = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, opt.vq_name, 'meta', 'mean.npy'))
-    std = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, opt.vq_name, 'meta', 'std.npy'))
 
     train_split_file = pjoin(opt.data_root, 'train.txt')
     val_split_file = pjoin(opt.data_root, 'val.txt')

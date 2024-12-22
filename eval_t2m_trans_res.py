@@ -3,7 +3,7 @@ from os.path import join as pjoin
 
 import torch
 
-from models.mask_transformer.transformer import MaskTransformer, ResidualTransformer
+from models.mask_transformer.transformer import MaskTransformer, ResidualTransformer,ResidualTimesformer
 from models.vq.model import RVQVAE
 
 from options.eval_option import EvalT2MOptions
@@ -121,7 +121,7 @@ if __name__ == '__main__':
     res_opt = get_opt(res_opt_path, device=opt.device)
     res_model = load_res_model(res_opt)
 
-    assert res_opt.vq_name == model_opt.vq_name
+    # assert res_opt.vq_name == model_opt.vq_name
 
     dataset_opt_path = 'checkpoints/kit/Comp_v6_KLD005/opt.txt' if opt.dataset_name == 'kit' \
         else 'checkpoints/t2m/Comp_v6_KLD005/opt.txt'
@@ -132,8 +132,9 @@ if __name__ == '__main__':
     ##### ---- Dataloader ---- #####
     opt.nb_joints = 21 if opt.dataset_name == 'kit' else 22
 
-    eval_val_loader, _ = get_dataset_motion_loader(dataset_opt_path, 32, 'test', device=opt.device)
-
+    eval_val_loader, _ = get_dataset_motion_loader(dataset_opt_path, 32, 'test', device=opt.device, is_recap=opt.is_recap, recap_name=opt.recap_name)
+    if opt.is_recap:
+        print('Using Recap Text')
     # model_dir = pjoin(opt.)
     for file in os.listdir(model_dir):
         if opt.which_epoch != "all" and opt.which_epoch not in file:
@@ -164,7 +165,7 @@ if __name__ == '__main__':
                                                                        i, eval_wrapper=eval_wrapper,
                                                          time_steps=opt.time_steps, cond_scale=opt.cond_scale,
                                                          temperature=opt.temperature, topkr=opt.topkr,
-                                                                       force_mask=opt.force_mask, cal_mm=True)
+                                                                       force_mask=opt.force_mask, cal_mm=True, is_recap=opt.is_recap)
             fid.append(best_fid)
             div.append(best_div)
             top1.append(Rprecision[0])

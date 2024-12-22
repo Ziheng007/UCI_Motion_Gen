@@ -48,11 +48,11 @@ def load_vq_model():
                 vq_opt.dilation_growth_rate,
                 vq_opt.vq_act,
                 vq_opt.vq_norm)
-    ckpt = torch.load(pjoin(vq_opt.checkpoints_dir, vq_opt.dataset_name, vq_opt.name, 'model', 'net_best_fid.tar'),
-                            map_location='cpu')
-    model_key = 'vq_model' if 'vq_model' in ckpt else 'net'
-    vq_model.load_state_dict(ckpt[model_key])
-    print(f'Loading VQ Model {opt.vq_name}')
+    # ckpt = torch.load(pjoin(vq_opt.checkpoints_dir, vq_opt.dataset_name, vq_opt.name, 'model', 'net_best_fid.tar'),
+    #                         map_location='cpu')
+    # model_key = 'vq_model' if 'vq_model' in ckpt else 'net'
+    # vq_model.load_state_dict(ckpt[model_key])
+    # print(f'Loading VQ Model {opt.vq_name}')
     return vq_model, vq_opt
 
 if __name__ == '__main__':
@@ -75,7 +75,7 @@ if __name__ == '__main__':
     os.makedirs(opt.log_dir, exist_ok=True)
 
     if opt.dataset_name == 't2m':
-        opt.data_root = './dataset/HumanML3D'
+        opt.data_root = '/extra/xielab0/araujog/motion-generation/HumanML3D'
         opt.motion_dir = pjoin(opt.data_root, 'new_joint_vecs')
         opt.joints_num = 22
         opt.max_motion_len = 55

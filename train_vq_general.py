@@ -4,7 +4,8 @@ from os.path import join as pjoin
 import torch
 from torch.utils.data import DataLoader
 
-from models.vq.model import RVQVAE
+from models.vq.model_multi import RVQVAE_Multi
+from models.vq.model_general import RVQVAE_Decode  
 from models.vq.vq_trainer import RVQTokenizerTrainer
 from options.vq_option import arg_parse
 from data.t2m_dataset import MotionDataset
@@ -31,7 +32,6 @@ def plot_t2m(data, save_dir):
 
 
 if __name__ == "__main__":
-    # torch.autograd.set_detect_anomaly(True)
     opt = arg_parse(True)
     fixseed(opt.seed)
 
@@ -39,15 +39,23 @@ if __name__ == "__main__":
     print(f"Using Device: {opt.device}")
 
     opt.save_root = pjoin(opt.checkpoints_dir, opt.dataset_name, opt.name)
-    opt.model_dir = pjoin(opt.save_root, 'model')
+    opt.general_root = pjoin(opt.checkpoints_dir, opt.dataset_name, opt.general_name)
+
+    opt.model_dir = pjoin(opt.save_root, 'model') 
     opt.meta_dir = pjoin(opt.save_root, 'meta')
     opt.eval_dir = pjoin(opt.save_root, 'animation')
     opt.log_dir = pjoin('./log/vq/', opt.dataset_name, opt.name)
 
-    os.makedirs(opt.model_dir, exist_ok=True)
-    os.makedirs(opt.meta_dir, exist_ok=True)
-    os.makedirs(opt.eval_dir, exist_ok=True)
-    os.makedirs(opt.log_dir, exist_ok=True)
+    opt.general_model_dir = pjoin(opt.general_root, 'model')
+    opt.general_meta_dir = pjoin(opt.general_root, 'meta')
+    opt.genreal_eval_dir = pjoin(opt.general_root, 'animation')
+    opt.general_log_dir = pjoin('./log/vq/', opt.dataset_name, opt.general_name)
+
+
+    os.makedirs(opt.general_model_dir, exist_ok=True)
+    os.makedirs(opt.general_meta_dir, exist_ok=True)
+    os.makedirs(opt.genreal_eval_dir, exist_ok=True)
+    os.makedirs(opt.general_log_dir, exist_ok=True)
 
     if opt.dataset_name == "t2m":
         opt.data_root = '/extra/xielab0/araujog/motion-generation/HumanML3D'
@@ -62,8 +70,7 @@ if __name__ == "__main__":
 
     elif opt.dataset_name == "kit":
         opt.data_root = '/extra/xielab0/araujog/motion-generation/KIT-ML'
-        # opt.motion_dir = pjoin(opt.data_root, 'new_joint_vecs')
-        opt.motion_dir = pjoin(opt.data_root, 'new_joints')
+        opt.motion_dir = pjoin(opt.data_root, 'new_joint_vecs')
         opt.text_dir = pjoin(opt.data_root, 'texts')
         opt.joints_num = 21
         radius = 240 * 8
@@ -77,7 +84,7 @@ if __name__ == "__main__":
 
     wrapper_opt = get_opt(dataset_opt_path, torch.device('cuda'))
     eval_wrapper = EvaluatorModelWrapper(wrapper_opt)
-
+    print('data_root',opt.data_root) #/extra/xielab0/araujog/motion-generation/HumanML3D
     mean = np.load(pjoin(opt.data_root, 'Mean.npy'))
     std = np.load(pjoin(opt.data_root, 'Std.npy'))
 
@@ -85,7 +92,7 @@ if __name__ == "__main__":
     val_split_file = pjoin(opt.data_root, 'val.txt')
 
 
-    net = RVQVAE(opt,
+    net = RVQVAE_Decode(opt,
                 dim_pose,
                 opt.nb_code,
                 opt.code_dim,
@@ -96,11 +103,21 @@ if __name__ == "__main__":
                 opt.depth,
                 opt.dilation_growth_rate,
                 opt.vq_act,
-                opt.vq_norm,)
+                opt.vq_norm,
+                mean,
+                std)
+    # if opt.name != 'test':
+    #     opt_path = pjoin(opt.checkpoints_dir, opt.dataset_name, opt.name, 'opt.txt')
+    #     vq_opt = get_opt(opt_path, opt.device)
+    #     ckpt = torch.load(pjoin(opt.model_dir, 'latest.tar'),map_location=opt.device)
+    #     model_key = 'vq_model' if 'vq_model' in ckpt else 'net'
+    #     net.load_state_dict(ckpt[model_key],strict=False)
+    #     print(f'Loading VQ Model {opt.name}')
+    net.to(opt.device)
 
     pc_vq = sum(param.numel() for param in net.parameters())
-    print(net)
-    # print("Total parameters of discriminator net: {}".format(pc_vq))
+    # print(net)
+    print("Total parameters of discriminator net: {}".format(pc_vq))
     # all_params += pc_vq_dis
 
     print('Total parameters of all models: {}M'.format(pc_vq/1000_000))
@@ -115,7 +132,7 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_dataset, batch_size=opt.batch_size, drop_last=True, num_workers=4,
                             shuffle=True, pin_memory=True)
     eval_val_loader, _ = get_dataset_motion_loader(dataset_opt_path, 32, 'val', device=opt.device)
-    trainer.train(train_loader, val_loader, eval_val_loader, eval_wrapper, plot_t2m)
+    trainer.train(train_loader, val_loader, eval_val_loader, eval_wrapper, plot_t2m, general=True)
 
 ## train_vq.py --dataset_name kit --batch_size 512 --name VQVAE_dp2 --gpu_id 3
 ## train_vq.py --dataset_name kit --batch_size 256 --name VQVAE_dp2_b256 --gpu_id 2

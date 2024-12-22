@@ -124,7 +124,7 @@ if __name__ == '__main__':
     with torch.no_grad():
         tokens, features = vq_model.encode(motion)
     ### build editing mask, TOEDIT marked as 1 ###
-    edit_mask = torch.zeros_like(tokens[..., 0])
+    edit_mask = torch.zeros_like(tokens[..., 0])# tokens [bs, seq_len, q]
     seq_len = tokens.shape[1]
     for _start, _end in edit_slice:
         if isinstance(_start, float):
@@ -139,6 +139,8 @@ if __name__ == '__main__':
     for r in range(opt.repeat_times):
         print("-->Repeat %d"%r)
         with torch.no_grad():
+            mids = tokens[..., 0]
+            mids = vq_model(motion)
             mids = t2m_transformer.edit(
                                         captions, tokens[..., 0].clone(), m_length//4,
                                         timesteps=opt.time_steps,
@@ -153,8 +155,8 @@ if __name__ == '__main__':
                 mids = res_model.generate(mids, captions, m_length//4, temperature=1, cond_scale=2)
             else:
                 mids.unsqueeze_(-1)
-
-            pred_motions = vq_model.forward_decoder(mids)
+            pred_motions, commit_loss, perplexity = vq_model(motion)
+            # pred_motions = vq_model.forward_decoder(mids)
 
             pred_motions = pred_motions.detach().cpu().numpy()
 
@@ -188,8 +190,8 @@ if __name__ == '__main__':
             ik_save_path = pjoin(animation_path, "sample%d_repeat%d_len%d_ik.mp4"%(k, r, m_length[k]))
             source_save_path = pjoin(animation_path, "sample%d_source_len%d.mp4"%(k, m_length[k]))
 
-            plot_3d_motion(ik_save_path, kinematic_chain, ik_joint, title=print_captions, fps=20)
-            plot_3d_motion(save_path, kinematic_chain, joint, title=print_captions, fps=20)
-            plot_3d_motion(source_save_path, kinematic_chain, soucre_joint, title='None', fps=20)
+            # plot_3d_motion(ik_save_path, kinematic_chain, ik_joint, title=print_captions, fps=20)
+            # plot_3d_motion(save_path, kinematic_chain, joint, title=print_captions, fps=20)
+            # plot_3d_motion(source_save_path, kinematic_chain, soucre_joint, title='None', fps=20)
             np.save(pjoin(joint_path, "sample%d_repeat%d_len%d.npy"%(k, r, m_length[k])), joint)
             np.save(pjoin(joint_path, "sample%d_repeat%d_len%d_ik.npy"%(k, r, m_length[k])), ik_joint)

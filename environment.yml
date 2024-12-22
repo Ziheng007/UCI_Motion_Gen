@@ -1,4 +1,4 @@
-name: momask
+name: Momask
 channels:
   - pytorch
   - anaconda
@@ -201,4 +201,4 @@ dependencies:
     - tensorboard==2.11.2
     - tensorboard-data-server==0.6.1
     - wcwidth==0.2.6
-prefix: /home/chuan/anaconda3/envs/momask
+prefix: /home/chuan/anaconda3/envs/Momask
