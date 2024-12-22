@@ -8,6 +8,7 @@ from utils.metrics import *
 import torch.nn.functional as F
 # import visualization.plot_3d_global as plot_3d
 from utils.motion_process import recover_from_ric
+import random
 #
 #
 # def tensorborad_add_video_xyz(writer, xyz, nb_iter, tag, nb_vis=4, title_batch=None, outname=None):
@@ -44,7 +45,6 @@ def evaluation_vqvae(out_dir, val_loader, net, writer, ep, best_fid, best_div, b
         # num_joints = 21 if motion.shape[-1] == 251 else 22
 
         # pred_pose_eval = torch.zeros((bs, seq, motion.shape[-1])).cuda()
-
         pred_pose_eval, loss_commit, perplexity = net(motion)
 
         et_pred, em_pred = eval_wrapper.get_co_embeddings(word_embeddings, pos_one_hots, sent_len, pred_pose_eval,
@@ -112,8 +112,8 @@ def evaluation_vqvae(out_dir, val_loader, net, writer, ep, best_fid, best_div, b
         msg = "--> --> \t Top1 Improved from %.5f to %.5f !!!" % (best_top1, R_precision[0])
         if draw: print(msg)
         best_top1 = R_precision[0]
-        # if save:
-        #     torch.save({'vq_model': net.state_dict(), 'ep':ep}, os.path.join(out_dir, 'net_best_top1.tar'))
+        if save:
+            torch.save({'vq_model': net.state_dict(), 'ep':ep}, os.path.join(out_dir, 'net_best_top1.tar'))
 
     if R_precision[1] > best_top2:
         msg = "--> --> \t Top2 Improved from %.5f to %.5f!!!" % (best_top2, R_precision[1])
@@ -162,8 +162,11 @@ def evaluation_vqvae_plus_mpjpe(val_loader, net, repeat_id, eval_wrapper, num_jo
         bs, seq = motion.shape[0], motion.shape[1]
 
         # num_joints = 21 if motion.shape[-1] == 251 else 22
-
         # pred_pose_eval = torch.zeros((bs, seq, motion.shape[-1])).cuda()
+
+        # code_indices, all_codes = net.encode(motion)
+        # pred_ids = code_indices[..., 0:1]
+        # pred_pose_eval = net.forward_decoder(pred_ids)
 
         pred_pose_eval, loss_commit, perplexity = net(motion)
         # all_indices,_  = net.encode(motion)
@@ -403,7 +406,7 @@ def evaluation_res_plus_l1(val_loader, vq_model, res_model, repeat_id, eval_wrap
 @torch.no_grad()
 def evaluation_mask_transformer(out_dir, val_loader, trans, vq_model, writer, ep, best_fid, best_div,
                            best_top1, best_top2, best_top3, best_matching, eval_wrapper, plot_func,
-                           save_ckpt=False, save_anim=False):
+                           save_ckpt=False, save_anim=False,is_recap=False):
 
     def save(file_name, ep):
         t2m_trans_state_dict = trans.state_dict()
@@ -440,7 +443,26 @@ def evaluation_mask_transformer(out_dir, val_loader, trans, vq_model, writer, ep
     nb_sample = 0
     # for i in range(1):
     for batch in val_loader:
-        word_embeddings, pos_one_hots, clip_text, sent_len, pose, m_length, token = batch
+        if is_recap:
+            word_embeddings, pos_one_hots, clip_text, sent_len, pose, m_length, token, recaption_text = batch
+            # clip_text = recaption_emb.squeeze(1)
+            BODY_PARTS = ['left arm','right arm','left leg','right leg']
+            # clip_text = [list(clip_text) for _ in range(4)]
+            # p = random.randint(2,4)
+            # selected_idx = random.sample(range(4), p)
+            # selected_idx = [0,1,2,3]
+            # for idx in selected_idx:
+            #     key = BODY_PARTS[idx]
+            #     clip_text[idx] = [cond + ' ' + recap for cond, recap in zip(clip_text[idx], recaption_text[key])]
+
+            # p = random.randint(2,4)
+            # selected_idx = random.sample(range(4), p)
+            selected_idx = [0,1,2,3]
+            for idx in selected_idx:
+                key = BODY_PARTS[idx]
+                clip_text = [cond + ' ' + recap for cond, recap in zip(clip_text, recaption_text[key])]
+        else:
+            word_embeddings, pos_one_hots, clip_text, sent_len, pose, m_length, token = batch
         m_length = m_length.cuda()
 
         bs, seq = pose.shape[:2]
@@ -448,9 +470,11 @@ def evaluation_mask_transformer(out_dir, val_loader, trans, vq_model, writer, ep
 
         # (b, seqlen)
         mids = trans.generate(clip_text, m_length//4, time_steps, cond_scale, temperature=1)
-
         # motion_codes = motion_codes.permute(0, 2, 1)
         mids.unsqueeze_(-1)
+        # mids,_ = vq_model.encode(pose.cuda().float())
+        # print(mids.shape)
+        # print('tokens', mids.max(), mids.min())
         pred_motions = vq_model.forward_decoder(mids)
 
         et_pred, em_pred = eval_wrapper.get_co_embeddings(word_embeddings, pos_one_hots, sent_len, pred_motions.clone(),
@@ -521,6 +545,8 @@ def evaluation_mask_transformer(out_dir, val_loader, trans, vq_model, writer, ep
     if R_precision[0] > best_top1:
         msg = f"--> --> \t Top1 Improved from {best_top1:.4f} to {R_precision[0]:.4f} !!!"
         print(msg)
+        if save_ckpt:
+            save(os.path.join(out_dir, 'model', 'net_best_top1.tar'), ep)
         best_top1 = R_precision[0]
 
     if R_precision[1] > best_top2:
@@ -692,6 +718,156 @@ def evaluation_res_transformer(out_dir, val_loader, trans, vq_model, writer, ep,
 
     return best_fid, best_div, best_top1, best_top2, best_top3, best_matching, writer
 
+@torch.no_grad()
+def evaluation_res_transformer_plus_base(out_dir, val_loader, trans, vq_model, base_trans, writer, ep, best_fid, best_div,
+                           best_top1, best_top2, best_top3, best_matching, eval_wrapper, plot_func,
+                           save_ckpt=False, save_anim=False, cond_scale=4.0, temperature=1, res_cond_scale=5.0):
+
+    def save(file_name, ep):
+        res_trans_state_dict = trans.state_dict()
+        clip_weights = [e for e in res_trans_state_dict.keys() if e.startswith('clip_model.')]
+        for e in clip_weights:
+            del res_trans_state_dict[e]
+        state = {
+            'res_transformer': res_trans_state_dict,
+            # 'opt_t2m_transformer': self.opt_t2m_transformer.state_dict(),
+            # 'scheduler':self.scheduler.state_dict(),
+            'ep': ep,
+        }
+        torch.save(state, file_name)
+
+    base_trans.eval()
+    trans.eval()
+    vq_model.eval()
+
+    motion_annotation_list = []
+    motion_pred_list = []
+    R_precision_real = 0
+    R_precision = 0
+    matching_score_real = 0
+    matching_score_pred = 0
+    time_steps = 10
+    # print(num_quantizer)
+
+    # assert num_quantizer >= len(time_steps) and num_quantizer >= len(cond_scales)
+
+    nb_sample = 0
+    # for i in range(1):
+    for batch in val_loader:
+        word_embeddings, pos_one_hots, clip_text, sent_len, pose, m_length, token = batch
+        m_length = m_length.cuda().long()
+        pose = pose.cuda().float()
+
+        bs, seq = pose.shape[:2]
+        # num_joints = 21 if pose.shape[-1] == 251 else 22
+
+        # (b, seqlen)
+        if ep == 0:
+            # pred_ids = code_indices[..., 0:1]
+            pred_ids = base_trans.generate(clip_text, m_length//4, time_steps, cond_scale, temperature=1, gsample=True).unsqueeze(-1)
+        else:
+            mids = base_trans.generate(clip_text, m_length//4, time_steps, cond_scale, temperature=1, gsample=True)
+            mids.unsqueeze_(-1)
+            pred_ids = trans.generate(mids[...,0], clip_text, m_length//4,temperature=1, cond_scale=res_cond_scale)
+            # pred_codes = trans(code_indices[..., 0], clip_text, m_length//4, force_mask=force_mask)
+        pred_motions = vq_model.forward_decoder(pred_ids)
+        et_pred, em_pred = eval_wrapper.get_co_embeddings(word_embeddings, pos_one_hots, sent_len, pred_motions.clone(),
+                                                          m_length)
+
+        pose = pose.cuda().float()
+
+        et, em = eval_wrapper.get_co_embeddings(word_embeddings, pos_one_hots, sent_len, pose, m_length)
+        motion_annotation_list.append(em)
+        motion_pred_list.append(em_pred)
+
+        temp_R = calculate_R_precision(et.cpu().numpy(), em.cpu().numpy(), top_k=3, sum_all=True)
+        temp_match = euclidean_distance_matrix(et.cpu().numpy(), em.cpu().numpy()).trace()
+        R_precision_real += temp_R
+        matching_score_real += temp_match
+        temp_R = calculate_R_precision(et_pred.cpu().numpy(), em_pred.cpu().numpy(), top_k=3, sum_all=True)
+        temp_match = euclidean_distance_matrix(et_pred.cpu().numpy(), em_pred.cpu().numpy()).trace()
+        R_precision += temp_R
+        matching_score_pred += temp_match
+
+        nb_sample += bs
+
+    motion_annotation_np = torch.cat(motion_annotation_list, dim=0).cpu().numpy()
+    motion_pred_np = torch.cat(motion_pred_list, dim=0).cpu().numpy()
+    gt_mu, gt_cov = calculate_activation_statistics(motion_annotation_np)
+    mu, cov = calculate_activation_statistics(motion_pred_np)
+
+    diversity_real = calculate_diversity(motion_annotation_np, 300 if nb_sample > 300 else 100)
+    diversity = calculate_diversity(motion_pred_np, 300 if nb_sample > 300 else 100)
+
+    R_precision_real = R_precision_real / nb_sample
+    R_precision = R_precision / nb_sample
+
+    matching_score_real = matching_score_real / nb_sample
+    matching_score_pred = matching_score_pred / nb_sample
+
+    fid = calculate_frechet_distance(gt_mu, gt_cov, mu, cov)
+
+    msg = f"--> \t Eva. Ep {ep} :, FID. {fid:.4f}, Diversity Real. {diversity_real:.4f}, Diversity. {diversity:.4f}, R_precision_real. {R_precision_real}, R_precision. {R_precision}, matching_score_real. {matching_score_real}, matching_score_pred. {matching_score_pred}"
+    print(msg)
+
+    # if draw:
+    writer.add_scalar('./Test/FID', fid, ep)
+    writer.add_scalar('./Test/Diversity', diversity, ep)
+    writer.add_scalar('./Test/top1', R_precision[0], ep)
+    writer.add_scalar('./Test/top2', R_precision[1], ep)
+    writer.add_scalar('./Test/top3', R_precision[2], ep)
+    writer.add_scalar('./Test/matching_score', matching_score_pred, ep)
+
+
+    if fid < best_fid:
+        msg = f"--> --> \t FID Improved from {best_fid:.5f} to {fid:.5f} !!!"
+        print(msg)
+        best_fid, best_ep = fid, ep
+        if save_ckpt:
+            save(os.path.join(out_dir, 'model', 'net_best_fid.tar'), ep)
+
+    if matching_score_pred < best_matching:
+        msg = f"--> --> \t matching_score Improved from {best_matching:.5f} to {matching_score_pred:.5f} !!!"
+        print(msg)
+        best_matching = matching_score_pred
+        if save_ckpt:
+            save(os.path.join(out_dir, 'model', 'net_best_mm.tar'), ep)
+
+    if abs(diversity_real - diversity) < abs(diversity_real - best_div):
+        msg = f"--> --> \t Diversity Improved from {best_div:.5f} to {diversity:.5f} !!!"
+        print(msg)
+        best_div = diversity
+
+    if R_precision[0] > best_top1:
+        msg = f"--> --> \t Top1 Improved from {best_top1:.4f} to {R_precision[0]:.4f} !!!"
+        print(msg)
+        best_top1 = R_precision[0]
+        if save_ckpt:
+            save(os.path.join(out_dir, 'model', 'net_best_top1.tar'), ep)
+
+
+    if R_precision[1] > best_top2:
+        msg = f"--> --> \t Top2 Improved from {best_top2:.4f} to {R_precision[1]:.4f} !!!"
+        print(msg)
+        best_top2 = R_precision[1]
+
+    if R_precision[2] > best_top3:
+        msg = f"--> --> \t Top3 Improved from {best_top3:.4f} to {R_precision[2]:.4f} !!!"
+        print(msg)
+        best_top3 = R_precision[2]
+
+    if save_anim:
+        rand_idx = torch.randint(bs, (3,))
+        data = pred_motions[rand_idx].detach().cpu().numpy()
+        captions = [clip_text[k] for k in rand_idx]
+        lengths = m_length[rand_idx].cpu().numpy()
+        save_dir = os.path.join(out_dir, 'animation', 'E%04d' % ep)
+        os.makedirs(save_dir, exist_ok=True)
+        # print(lengths)
+        plot_func(data, save_dir, captions, lengths)
+
+
+    return best_fid, best_div, best_top1, best_top2, best_top3, best_matching, writer
 
 @torch.no_grad()
 def evaluation_res_transformer_plus_l1(val_loader, vq_model, trans, repeat_id, eval_wrapper, num_joint,
@@ -900,7 +1076,7 @@ def evaluation_mask_transformer_test(val_loader, vq_model, trans, repeat_id, eva
 @torch.no_grad()
 def evaluation_mask_transformer_test_plus_res(val_loader, vq_model, res_model, trans, repeat_id, eval_wrapper,
                                 time_steps, cond_scale, temperature, topkr, gsample=True, force_mask=False,
-                                              cal_mm=True, res_cond_scale=5):
+                                              cal_mm=True, res_cond_scale=5, is_recap = False):
     trans.eval()
     vq_model.eval()
     res_model.eval()
@@ -921,9 +1097,28 @@ def evaluation_mask_transformer_test_plus_res(val_loader, vq_model, res_model, t
         num_mm_batch = 3
 
     for i, batch in enumerate(val_loader):
-        word_embeddings, pos_one_hots, clip_text, sent_len, pose, m_length, token = batch
-        m_length = m_length.cuda()
+        if is_recap:
+            word_embeddings, pos_one_hots, clip_text, sent_len, pose, m_length, token, recaption_text = batch
+            # clip_text = recaption_emb
+            # print(clip_text.shape)
+            BODY_PARTS = ['left arm','right arm','left leg','right leg','spine']
+            # clip_text = [list(clip_text) for _ in range(4)]
+            # p = random.randint(2,4)
+            # selected_idx = random.sample(range(4), p)
+            # selected_idx = [0,1,2,3]
+            # for idx in selected_idx:
+            #     key = BODY_PARTS[idx]
+            #     clip_text[idx] = [cond + ' ' + recap for cond, recap in zip(clip_text[idx], recaption_text[key])]
+            # p = random.randint(2,4)
+            # selected_idx = random.sample(range(4), p)
+            selected_idx = [0,1,2,3]
+            for idx in selected_idx:
+                key = BODY_PARTS[idx]
+                clip_text = [cond + ' ' + recap for cond, recap in zip(clip_text, recaption_text[key])]
+        else:
+            word_embeddings, pos_one_hots, clip_text, sent_len, pose, m_length, token = batch
 
+        m_length = m_length.cuda()
         bs, seq = pose.shape[:2]
         # num_joints = 21 if pose.shape[-1] == 251 else 22
 
@@ -935,16 +1130,13 @@ def evaluation_mask_transformer_test_plus_res(val_loader, vq_model, res_model, t
                 mids = trans.generate(clip_text, m_length // 4, time_steps, cond_scale,
                                       temperature=temperature, topk_filter_thres=topkr,
                                       gsample=gsample, force_mask=force_mask)
-
-                # motion_codes = motion_codes.permute(0, 2, 1)
-                # mids.unsqueeze_(-1)
-                pred_ids = res_model.generate(mids, clip_text, m_length // 4, temperature=1, cond_scale=res_cond_scale)
-                # pred_codes = trans(code_indices[..., 0], clip_text, m_length//4, force_mask=force_mask)
-                # pred_ids = torch.where(pred_ids==-1, 0, pred_ids)
-
+                mids.unsqueeze_(-1)
+                # pred_ids = mids
+                # mids = vq_model.encode(pose.cuda().float())
+                pred_ids = res_model.generate(mids[...,0], clip_text, m_length // 4, temperature=1, cond_scale=res_cond_scale)
+                # # pred_codes = trans(code_indices[..., 0], clip_text, m_length//4, force_mask=force_mask)
+                # # pred_ids = torch.where(pred_ids==-1, 0, pred_ids)
                 pred_motions = vq_model.forward_decoder(pred_ids)
-
-                # pred_motions = vq_model.decoder(codes)
                 # pred_motions = vq_model.forward_decoder(mids)
 
                 et_pred, em_pred = eval_wrapper.get_co_embeddings(word_embeddings, pos_one_hots, sent_len, pred_motions.clone(),
@@ -954,16 +1146,15 @@ def evaluation_mask_transformer_test_plus_res(val_loader, vq_model, res_model, t
             motion_multimodality_batch = torch.cat(motion_multimodality_batch, dim=1) #(bs, 30, d)
             motion_multimodality.append(motion_multimodality_batch)
         else:
-            mids = trans.generate(clip_text, m_length // 4, time_steps, cond_scale,
+            mids = trans.generate(clip_text, m_length//4, time_steps, cond_scale,
                                   temperature=temperature, topk_filter_thres=topkr,
                                   force_mask=force_mask)
-
-            # motion_codes = motion_codes.permute(0, 2, 1)
-            # mids.unsqueeze_(-1)
-            pred_ids = res_model.generate(mids, clip_text, m_length // 4, temperature=1, cond_scale=res_cond_scale)
+            mids.unsqueeze_(-1)
+            # pred_ids = mids
+            # mids = vq_model.encode(pose.cuda().float())
+            pred_ids = res_model.generate(mids[...,0], clip_text, m_length // 4, temperature=1, cond_scale=res_cond_scale)
             # pred_codes = trans(code_indices[..., 0], clip_text, m_length//4, force_mask=force_mask)
             # pred_ids = torch.where(pred_ids == -1, 0, pred_ids)
-
             pred_motions = vq_model.forward_decoder(pred_ids)
             # pred_motions = vq_model.forward_decoder(mids)
 
@@ -972,11 +1163,9 @@ def evaluation_mask_transformer_test_plus_res(val_loader, vq_model, res_model, t
                                                               m_length)
 
         pose = pose.cuda().float()
-
         et, em = eval_wrapper.get_co_embeddings(word_embeddings, pos_one_hots, sent_len, pose, m_length)
         motion_annotation_list.append(em)
         motion_pred_list.append(em_pred)
-
         temp_R = calculate_R_precision(et.cpu().numpy(), em.cpu().numpy(), top_k=3, sum_all=True)
         temp_match = euclidean_distance_matrix(et.cpu().numpy(), em.cpu().numpy()).trace()
         R_precision_real += temp_R
