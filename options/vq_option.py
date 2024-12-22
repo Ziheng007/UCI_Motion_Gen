@@ -56,7 +56,7 @@ def arg_parse(is_train=False):
     parser.add_argument('--eval_every_e', default=1, type=int, help='save eval results every n epoch')
     # parser.add_argument('--early_stop_e', default=5, type=int, help='early stopping epoch')
     parser.add_argument('--feat_bias', type=float, default=5, help='Layers of GRU')
-
+    parser.add_argument('--general_name', type=str, default="test_general", help='Name of this general trial')
     parser.add_argument('--which_epoch', type=str, default="all", help='Name of this trial')
 
     ## For Res Predictor only
