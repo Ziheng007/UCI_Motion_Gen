@@ -2,7 +2,7 @@ import torch
 from collections import defaultdict
 import torch.optim as optim
 # import tensorflow as tf
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 from collections import OrderedDict
 from utils.utils import *
 from os.path import join as pjoin
@@ -22,8 +22,8 @@ class MaskTransformerTrainer:
         self.device = args.device
         self.vq_model.eval()
 
-        if args.is_train:
-            self.logger = SummaryWriter(args.log_dir)
+        # if args.is_train:
+            # self.logger = SummaryWriter(args.log_dir)
 
 
     def update_lr_warm_up(self, nb_iter, warm_up_iter, lr):
@@ -116,8 +116,8 @@ class MaskTransformerTrainer:
         print('Iters Per Epoch, Training: %04d, Validation: %03d' % (len(train_loader), len(val_loader)))
         logs = defaultdict(def_value, OrderedDict())
 
-        best_fid, best_div, best_top1, best_top2, best_top3, best_matching, writer = evaluation_mask_transformer(
-            self.opt.save_root, eval_val_loader, self.t2m_transformer, self.vq_model, self.logger, epoch,
+        best_fid, best_div, best_top1, best_top2, best_top3, best_matching = evaluation_mask_transformer(
+            self.opt.save_root, eval_val_loader, self.t2m_transformer, self.vq_model, epoch,
             best_fid=100, best_div=100,
             best_top1=0, best_top2=0, best_top3=0,
             best_matching=100, eval_wrapper=eval_wrapper,
@@ -193,8 +193,8 @@ class ResidualTransformerTrainer:
         self.device = args.device
         self.vq_model.eval()
 
-        if args.is_train:
-            self.logger = SummaryWriter(args.log_dir)
+        # if args.is_train:
+            # self.logger = SummaryWriter(args.log_dir)
             # self.l1_criterion = torch.nn.SmoothL1Loss()
 
 
@@ -225,7 +225,7 @@ class ResidualTransformerTrainer:
 
     def update(self, batch_data):
         loss, acc = self.forward(batch_data)
-
+        print(loss)
         self.opt_res_transformer.zero_grad()
         loss.backward()
         self.opt_res_transformer.step()
@@ -284,13 +284,13 @@ class ResidualTransformerTrainer:
         print('Iters Per Epoch, Training: %04d, Validation: %03d' % (len(train_loader), len(val_loader)))
         logs = defaultdict(def_value, OrderedDict())
 
-        best_fid, best_div, best_top1, best_top2, best_top3, best_matching, writer = evaluation_res_transformer(
-            self.opt.save_root, eval_val_loader, self.res_transformer, self.vq_model, self.logger, epoch,
-            best_fid=100, best_div=100,
-            best_top1=0, best_top2=0, best_top3=0,
-            best_matching=100, eval_wrapper=eval_wrapper,
-            plot_func=plot_eval, save_ckpt=False, save_anim=False
-        )
+        # best_fid, best_div, best_top1, best_top2, best_top3, best_matching, writer = evaluation_res_transformer(
+        #     self.opt.save_root, eval_val_loader, self.res_transformer, self.vq_model, epoch,
+        #     best_fid=100, best_div=100,
+        #     best_top1=0, best_top2=0, best_top3=0,
+        #     best_matching=100, eval_wrapper=eval_wrapper,
+        #     plot_func=plot_eval, save_ckpt=False, save_anim=False
+        # )
         best_loss = 100
         best_acc = 0
 

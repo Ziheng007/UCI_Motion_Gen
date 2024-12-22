@@ -64,7 +64,7 @@ class RVQVAE(nn.Module):
     def forward(self, x):
         x_in = self.preprocess(x)
         # Encode
-        x_encoder = self.encoder(x_in)
+        x_encoder = self.encoder(x_in)#[bs,code_dim,16]
 
         ## quantization
         # x_quantized, code_idx, commit_loss, perplexity = self.quantizer(x_encoder, sample_codebook_temp=0.5,

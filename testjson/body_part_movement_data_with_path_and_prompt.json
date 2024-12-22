@@ -1,0 +1,30 @@
+{
+    "Source Motion": {
+        "source_motion": "string"
+    },
+    "Original Prompt": {
+        "text_prompt": "string"
+    }, 
+    "Original Body Part": {
+        "Right arm": "The right arm supports the body while crawling forward toward the object.",
+        "Left arm": "The left arm supports the body while crawling forward toward the object.",
+        "Right leg": "The right leg bends to facilitate crawling on the knees.",
+        "Left leg": "The left leg bends to facilitate crawling on the knees."
+    },
+    "Caption Body Part": {
+        "Right arm": "The right arm extends forward and then pushes against the ground to propel the body forward.",
+        "Left arm": "The left arm extends forward and then pushes against the ground to propel the body forward.",
+        "Right leg": "The right leg bends and moves forward, then presses down on the ground to support the body.",
+        "Left leg": "The left leg bends and moves forward, then presses down on the ground to support the body." 
+    },
+    "Difference": {
+        "Right arm": "The right arm supports the body while crawling forward toward the object.",
+        "Left arm": "The left arm supports the body while crawling forward toward the object.",
+        "Right leg": "None",
+        "Left leg": "None"
+    },
+    "Edit Part": {
+        "edit_part": "0 1"
+    }
+
+}

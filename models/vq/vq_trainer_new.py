@@ -21,9 +21,10 @@ def def_value():
 
 
 class RVQTokenizerTrainer:
-    def __init__(self, args, vq_model):
+    def __init__(self, args, gvq_model,mvq_model):
         self.opt = args
-        self.vq_model = vq_model
+        self.gvq_model = gvq_model
+        self.mvq_model = mvq_model
         self.device = args.device
 
         if args.is_train:
@@ -37,7 +38,8 @@ class RVQTokenizerTrainer:
 
     def forward(self, batch_data):
         motions = batch_data.detach().to(self.device).float()
-        pred_motion, loss_commit, perplexity = self.vq_model(motions)
+        
+        pred_motion, loss_commit, perplexity = self.gvq_model(motions)
         
         self.motions = motions
         self.pred_motion = pred_motion
@@ -65,7 +67,7 @@ class RVQTokenizerTrainer:
 
     def save(self, file_name, ep, total_it):
         state = {
-            "vq_model": self.vq_model.state_dict(),
+            "vq_model": self.gvq_model.state_dict(),
             "opt_vq_model": self.opt_vq_model.state_dict(),
             "scheduler": self.scheduler.state_dict(),
             'ep': ep,
@@ -75,66 +77,51 @@ class RVQTokenizerTrainer:
 
     def resume(self, model_dir):
         checkpoint = torch.load(model_dir, map_location=self.device)
-        self.vq_model.load_state_dict(checkpoint['vq_model'])
+        self.gvq_model.load_state_dict(checkpoint['vq_model'])
         self.opt_vq_model.load_state_dict(checkpoint['opt_vq_model'])
         self.scheduler.load_state_dict(checkpoint['scheduler'])
         return checkpoint['ep'], checkpoint['total_it']
-    
-    def resume_teacher(self, model_dir):
-        checkpoint = torch.load(model_dir, map_location=self.device)
-        self.vq_model.load_state_dict(checkpoint['vq_model'],strict=False)
-        return checkpoint['ep'], checkpoint['total_it']
-    
-    def train(self, train_loader, val_loader, eval_val_loader, eval_wrapper, plot_eval=None,general=False):
 
-        self.vq_model.to(self.device)
+    def train(self, train_loader, val_loader, eval_val_loader, eval_wrapper, plot_eval=None):
 
-        self.opt_vq_model = optim.AdamW(self.vq_model.parameters(), lr=self.opt.lr, betas=(0.9, 0.99), weight_decay=self.opt.weight_decay)
+        self.gvq_model.to(self.device)
+
+        self.opt_vq_model = optim.AdamW(self.gvq_model.parameters(), lr=self.opt.lr, betas=(0.9, 0.99), weight_decay=self.opt.weight_decay)
         self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.opt_vq_model, milestones=self.opt.milestones, gamma=self.opt.gamma)
+
         epoch = 0
         it = 0
-        if general:
-            print('General Model Training')
-            print('Multi Model Dir:', self.opt.model_dir)
-            print('General Model Dir:', self.opt.general_model_dir)
-            teacher_model_dir = pjoin(self.opt.model_dir, 'latest.tar')
-            self.resume_teacher(teacher_model_dir)
-            self.opt.model_dir = self.opt.general_model_dir
-
         if self.opt.is_continue:
             model_dir = pjoin(self.opt.model_dir, 'latest.tar')
             epoch, it = self.resume(model_dir)
             print("Load model epoch:%d iterations:%d"%(epoch, it))
+
         start_time = time.time()
         total_iters = self.opt.max_epoch * len(train_loader)
         print(f'Total Epochs: {self.opt.max_epoch}, Total Iters: {total_iters}')
         print('Iters Per Epoch, Training: %04d, Validation: %03d' % (len(train_loader), len(eval_val_loader)))
+        # val_loss = 0
+        # min_val_loss = np.inf
+        # min_val_epoch = epoch
         current_lr = self.opt.lr
         logs = defaultdict(def_value, OrderedDict())
 
         # sys.exit()
-        best_fid, best_div, best_top1, best_top2, best_top3, best_matching = evaluation_vqvae(
-                self.opt.model_dir, eval_val_loader, self.vq_model, epoch, best_fid=1000,
-                best_div=100, best_top1=0,
-                best_top2=0, best_top3=0, best_matching=100,
-                eval_wrapper=eval_wrapper, save=False)
-        
+        # best_fid, best_div, best_top1, best_top2, best_top3, best_matching = evaluation_vqvae(
+        #     self.opt.model_dir, eval_val_loader, self.vq_model, epoch, best_fid=1000,
+        #     best_div=100, best_top1=0,
+        #     best_top2=0, best_top3=0, best_matching=100,
+        #     eval_wrapper=eval_wrapper, save=True)
         while epoch < self.opt.max_epoch:
-            self.vq_model.train()
-            if general:
-                self.vq_model.freeze_encoder_and_quantizer()
-            # for batch in eval_val_loader:
-            #     word_embeddings, pos_one_hots, caption, sent_len, motion, m_length, token = batch
-            #     motion = motion.cuda()
-            #     pred_pose_eval, loss_commit, perplexity = self.vq_model(motion)
+            self.gvq_model.train()
             for i, batch_data in enumerate(train_loader):
                 it += 1
                 if it < self.opt.warm_up_iter:
                     current_lr = self.update_lr_warm_up(it, self.opt.warm_up_iter, self.opt.lr)
                 loss, loss_rec, loss_vel, loss_commit, perplexity = self.forward(batch_data)
-                # self.opt_vq_model.zero_grad()
-                # loss.backward()
-                # self.opt_vq_model.step()
+                self.opt_vq_model.zero_grad()
+                loss.backward()
+                self.opt_vq_model.step()
 
                 if it >= self.opt.warm_up_iter:
                     self.scheduler.step()
@@ -167,7 +154,7 @@ class RVQTokenizerTrainer:
             #     self.save(pjoin(self.opt.model_dir, 'E%04d.tar' % (epoch)), epoch, total_it=it)
 
             print('Validation time:')
-            self.vq_model.eval()
+            self.gvq_model.eval()
             val_loss_rec = []
             val_loss_vel = []
             val_loss_commit = []
@@ -208,7 +195,7 @@ class RVQTokenizerTrainer:
             #     print('Best Validation Model So Far!~')
 
             best_fid, best_div, best_top1, best_top2, best_top3, best_matching, writer = evaluation_vqvae(
-                self.opt.model_dir, eval_val_loader, self.vq_model, self.logger, epoch, best_fid=best_fid,
+                self.opt.model_dir, eval_val_loader, self.gvq_model, self.logger, epoch, best_fid=best_fid,
                 best_div=best_div, best_top1=best_top1,
                 best_top2=best_top2, best_top3=best_top3, best_matching=best_matching, eval_wrapper=eval_wrapper)
 

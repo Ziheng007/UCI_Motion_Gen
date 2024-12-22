@@ -145,7 +145,6 @@ class QuantizeEMAReset(nn.Module):
             perplexity = self.compute_perplexity(code_idx)
 
         commit_loss = F.mse_loss(x, x_d.detach()) # It's right. the t2m-gpt paper is wrong on embed loss and commitment loss.
-
         # Passthrough
         x_d = x + (x_d - x).detach()
 

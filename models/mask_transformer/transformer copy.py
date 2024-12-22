@@ -1706,12 +1706,13 @@ class ResidualTimesformer(nn.Module):
             self.clip_version = clip_version
             self.clip_model = self.load_and_freeze_clip(clip_version)
 
+    # def
 
     def mask_cond(self, cond, force_mask=False):
+        bs, d =  cond.shape
         if force_mask:
             return torch.zeros_like(cond)
         elif self.training and self.cond_drop_prob > 0.:
-            bs, d =  cond.shape
             mask = torch.bernoulli(torch.ones(bs, device=cond.device) * self.cond_drop_prob).view(bs, 1)
             return cond * (1. - mask)
         else:
@@ -1804,11 +1805,8 @@ class ResidualTimesformer(nn.Module):
         q_onehot = self.encode_quant(qids).float().to(x.device)
 
         q_emb = self.quant_emb(q_onehot).unsqueeze(0).unsqueeze(2).repeat(1,1,self.body_parts,1)  # (1, b, p, latent_dim)
-        if len(cond.shape) != 3: #[b,d]
-            cond = self.cond_emb(cond).unsqueeze(0).unsqueeze(2).repeat(1,1,self.body_parts,1) #(1, b, p, latent_dim)
-        else: #[b,p,d]
-            cond = self.cond_emb(cond).unsqueeze(0)
-            
+        cond = self.cond_emb(cond).unsqueeze(0).unsqueeze(2).repeat(1,1,self.body_parts,1)  # (1, b, p, latent_dim)
+
         # x = self.position_enc(x)
         xseq = torch.cat([cond, q_emb, x], dim=0)  # (seqlen+2, b, p, latent_dim)
         xseq = xseq.permute(1,0,2,3).unsqueeze(2)
@@ -1880,14 +1878,7 @@ class ResidualTimesformer(nn.Module):
         force_mask = False
         if self.cond_mode == 'text':
             with torch.no_grad():
-                if isinstance(y,list):
-                    cond_vector = []
-                    for cond in y:
-                        cond_vector_ = self.encode_text(cond)
-                        cond_vector.append(cond_vector_)
-                    cond_vector = torch.stack(cond_vector,dim=1)
-                else:
-                    cond_vector = self.encode_text(y)
+                cond_vector = self.encode_text(y)
         elif self.cond_mode == 'action':
             cond_vector = self.enc_action(y).to(device).float()
         elif self.cond_mode == 'uncond':
@@ -1923,14 +1914,7 @@ class ResidualTimesformer(nn.Module):
 
         if self.cond_mode == 'text':
             with torch.no_grad():
-                if isinstance(conds,list):
-                    cond_vector = []
-                    for cond in conds:
-                        cond_vector_ = self.encode_text(cond)
-                        cond_vector.append(cond_vector_)
-                    cond_vector = torch.stack(cond_vector,dim=1)
-                else:
-                    cond_vector = self.encode_text(conds)
+                cond_vector = self.encode_text(conds)
         elif self.cond_mode == 'action':
             cond_vector = self.enc_action(conds).to(device)
         elif self.cond_mode == 'uncond':
@@ -1944,7 +1928,6 @@ class ResidualTimesformer(nn.Module):
 
         # print(pa, seq_len)
         padding_mask = ~lengths_to_mask(m_lens, seq_len)  # (b, n)
-        print(padding_mask.shape)
         # print(padding_mask.shape, motion_ids.shape)
         motion_ids = torch.where(padding_mask.unsqueeze(1), self.pad_id, motion_ids)
         all_indices = [motion_ids]
@@ -2185,10 +2168,10 @@ class TimesTransformer(nn.Module):
         return feat_clip_text
 
     def mask_cond(self, cond, force_mask=False):
+        bs, d =  cond.shape
         if force_mask:
             return torch.zeros_like(cond)
         elif self.training and self.cond_drop_prob > 0.:
-            bs, d =  cond.shape
             mask = torch.bernoulli(torch.ones(bs, device=cond.device) * self.cond_drop_prob).view(bs, 1)
             return cond * (1. - mask)
         else:
@@ -2219,12 +2202,9 @@ class TimesTransformer(nn.Module):
         x = torch.stack(x, dim=2)# (n, b, p, d) 
         # print(x.shape)
         # (b, seqlen, d) -> (seqlen, b, latent_dim)
-        if len(cond.shape) != 3: #[b,d]
-            cond = self.cond_emb(cond).unsqueeze(0).unsqueeze(2).repeat(1,1,self.body_parts,1) #(1, b, p, latent_dim)
-        else: #[b,p,d]
-            cond = self.cond_emb(cond).unsqueeze(0)
+        cond = self.cond_emb(cond).unsqueeze(0).unsqueeze(2).repeat(1,1,self.body_parts,1) #(1, b, p, latent_dim)
         # x = self.position_enc(x)
-        xseq = torch.cat([cond, x], dim=0) #(seqlen+1, b, p, latent_dim) 
+        xseq = torch.cat([cond, x], dim=0) #(seqlen+1, b, p, latent_dim)
         xseq = xseq.permute(1,0,2,3).unsqueeze(2)#(b, seqlen+1, 1, p, latent_dim)
         padding_mask = torch.cat([torch.zeros_like(padding_mask[:, 0:1]), padding_mask], dim=1) #(b, seqlen+1)
         # print(xseq.shape, padding_mask.shape)
@@ -2330,8 +2310,7 @@ class TimesTransformer(nn.Module):
                  temperature=1,
                  topk_filter_thres=0.9,
                  gsample=False,
-                 force_mask=False,
-                 token_cond=None
+                 force_mask=False
                  ):
         # print(self.opt.num_quantizers)
         # assert len(timesteps) >= len(cond_scales) == self.opt.num_quantizers
@@ -2342,32 +2321,22 @@ class TimesTransformer(nn.Module):
 
         if self.cond_mode == 'text':
             with torch.no_grad():
-                if isinstance(conds,list):
-                    cond_vector = []
-                    for cond in conds:
-                        cond_vector_ = self.encode_text(cond)
-                        cond_vector.append(cond_vector_)
-                    cond_vector = torch.stack(cond_vector,dim=1)
-                else:
-                    cond_vector = self.encode_text(conds)
+                cond_vector = self.encode_text(conds)
         elif self.cond_mode == 'action':
             cond_vector = self.enc_action(conds).to(device)
         elif self.cond_mode == 'uncond':
             cond_vector = torch.zeros(batch_size, self.latent_dim).float().to(device)
         else:
             raise NotImplementedError("Unsupported condition mode!!!")
-        if token_cond is not None:
-            seq_len = token_cond.shape[2]
-            padding_mask = ~lengths_to_mask(m_lens, seq_len)
-            ids = token_cond.clone()
-            ids = torch.where(padding_mask.unsqueeze(1), self.pad_id, ids)
-            num_token_cond = (ids == self.mask_id).sum(dim=-1)[0][0] #TODO
-        else:
-            # Start from all tokens being masked
-            padding_mask = ~lengths_to_mask(m_lens, seq_len)# (b,f)
-            ids = torch.where(padding_mask, self.pad_id, self.mask_id).unsqueeze(1).repeat(1, self.body_parts, 1) #(b,p,n)
+
+        padding_mask = ~lengths_to_mask(m_lens, seq_len)# (b,f)
+        # print(padding_mask.shape, )
+
+        # Start from all tokens being masked
+        ids = torch.where(padding_mask, self.pad_id, self.mask_id).unsqueeze(1).repeat(1, self.body_parts, 1) #(b,p,n)
         scores = torch.where(padding_mask, 1e5, 0.).unsqueeze(1).repeat(1, self.body_parts, 1) #(b,p,n)
         starting_temperature = temperature
+
         for timestep, steps_until_x0 in zip(torch.linspace(0, 1, timesteps, device=device), reversed(range(timesteps))):
             # 0 < timestep < 1
             rand_mask_prob = self.noise_schedule(timestep)  # Tensor
@@ -2376,17 +2345,14 @@ class TimesTransformer(nn.Module):
             Maskout, and cope with variable length
             '''
             # fix: the ratio regarding lengths, instead of seq_len
-            if token_cond is not None:
-                num_token_masked = torch.round(rand_mask_prob * num_token_cond).clamp(min=1)
-                scores[token_cond != self.mask_id] = 1e5
-            else:
-                num_token_masked = torch.round(rand_mask_prob * m_lens).clamp(min=1)  # (b, )
+            num_token_masked = torch.round(rand_mask_prob * m_lens).clamp(min=1)  # (b, )
 
             # select num_token_masked tokens with lowest scores to be masked
-            sorted_indices = scores.argsort(dim=2)  # (b, p, n), sorted_indices[i, j] = the index of j-th lowest element in scores on dim=1
+            sorted_indices = scores.argsort(
+                dim=2)  # (b, p, n), sorted_indices[i, j] = the index of j-th lowest element in scores on dim=1
             ranks = sorted_indices.argsort(dim=2)  # (b, p, n), rank[i, j] = the rank (0: lowest) of scores[i, j] on dim=1
+            #TODO
             is_mask = (ranks < num_token_masked.unsqueeze(-1).unsqueeze(-1)) # (b, p, n)
-            # print('is_mask shape', is_mask.shape)
             ids = torch.where(is_mask, self.mask_id, ids)
             '''
             Preparing input
@@ -2422,6 +2388,7 @@ class TimesTransformer(nn.Module):
                 # print(temperature, starting_temperature, steps_until_x0, timesteps)
                 # print(probs / temperature)
                 pred_ids = Categorical(probs).sample()  # (b, seqlen)
+
             # print(pred_ids.max(), pred_ids.min())
             # if pred_ids.
             ids = torch.where(is_mask, pred_ids, ids)
@@ -2441,7 +2408,8 @@ class TimesTransformer(nn.Module):
         ids = torch.where(padding_mask.unsqueeze(1), -1, ids)
         # print("Final", ids.max(), ids.min())
         return ids
-    
+
+
     @torch.no_grad()
     @eval_decorator
     def edit(self,
@@ -2456,19 +2424,15 @@ class TimesTransformer(nn.Module):
              force_mask=False,
              edit_mask=None,
              padding_mask=None,
-             edit_parts=None,
              ):
 
         assert edit_mask.shape == tokens.shape if edit_mask is not None else True
         device = next(self.parameters()).device
-        seq_len = tokens.shape[2] #[bs,body_parts,seq_len]
+        seq_len = tokens.shape[1]
 
         if self.cond_mode == 'text':
             with torch.no_grad():
                 cond_vector = self.encode_text(conds)
-                if len(cond_vector.shape)!=3:
-                    cond_vector = cond_vector.unsqueeze(0)
-                print('cond_vector',cond_vector.shape)
         elif self.cond_mode == 'action':
             cond_vector = self.enc_action(conds).to(device)
         elif self.cond_mode == 'uncond':
@@ -2478,26 +2442,23 @@ class TimesTransformer(nn.Module):
 
         if padding_mask == None:
             padding_mask = ~lengths_to_mask(m_lens, seq_len)
-            padding_mask_ = padding_mask.unsqueeze(1)
 
         # Start from all tokens being masked
         if edit_mask == None:
             mask_free = True
-            ids = torch.where(padding_mask_, self.pad_id, tokens)
-            edit_mask = torch.ones_like(padding_mask_)
-            edit_mask = edit_mask & ~padding_mask_
+            ids = torch.where(padding_mask, self.pad_id, tokens)
+            edit_mask = torch.ones_like(padding_mask)
+            edit_mask = edit_mask & ~padding_mask
             edit_len = edit_mask.sum(dim=-1)
             scores = torch.where(edit_mask, 0., 1e5)
         else:
             mask_free = False
-            edit_mask = edit_mask & ~padding_mask_
-            edit_len = edit_mask[:,edit_parts[0],:].sum(dim=-1)
+            edit_mask = edit_mask & ~padding_mask
+            edit_len = edit_mask.sum(dim=-1)
             ids = torch.where(edit_mask, self.mask_id, tokens)
             scores = torch.where(edit_mask, 0., 1e5)
         starting_temperature = temperature
-        none_edit_parts = []
-        none_edit_parts = [i for i in range(self.body_parts) if i not in edit_parts]
-        none_edit_ids = ids[:,none_edit_parts,:].clone()
+
         for timestep, steps_until_x0 in zip(torch.linspace(0, 1, timesteps, device=device), reversed(range(timesteps))):
             # 0 < timestep < 1
             rand_mask_prob = 0.16 if mask_free else self.noise_schedule(timestep)  # Tensor
@@ -2509,11 +2470,13 @@ class TimesTransformer(nn.Module):
             num_token_masked = torch.round(rand_mask_prob * edit_len).clamp(min=1)  # (b, )
 
             # select num_token_masked tokens with lowest scores to be masked
-            sorted_indices = scores.argsort(dim=2)  # (b, k), sorted_indices[i, j] = the index of j-th lowest element in scores on dim=1
-            ranks = sorted_indices.argsort(dim=2)  # (b, k), rank[i, j] = the rank (0: lowest) of scores[i, j] on dim=1
-            is_mask = (ranks < num_token_masked.unsqueeze(-1).unsqueeze(-1))
+            sorted_indices = scores.argsort(
+                dim=1)  # (b, k), sorted_indices[i, j] = the index of j-th lowest element in scores on dim=1
+            ranks = sorted_indices.argsort(dim=1)  # (b, k), rank[i, j] = the rank (0: lowest) of scores[i, j] on dim=1
+            is_mask = (ranks < num_token_masked.unsqueeze(-1))
             # is_mask = (torch.rand_like(scores) < 0.8) * ~padding_mask if mask_free else is_mask
             ids = torch.where(is_mask, self.mask_id, ids)
+
             '''
             Preparing input
             '''
@@ -2523,7 +2486,7 @@ class TimesTransformer(nn.Module):
                                                   cond_scale=cond_scale,
                                                   force_mask=force_mask)
 
-            logits = logits.permute(0, 2, 3, 1)  # (b, seqlen, ntoken)
+            logits = logits.permute(0, 2, 1)  # (b, seqlen, ntoken)
             # print(logits.shape, self.opt.num_tokens)
             # clean low prob token
             filtered_logits = top_k(logits, topk_filter_thres, dim=-1)
@@ -2548,89 +2511,23 @@ class TimesTransformer(nn.Module):
                 # print(probs / temperature)
                 pred_ids = Categorical(probs).sample()  # (b, seqlen)
 
+            # print(pred_ids.max(), pred_ids.min())
             # if pred_ids.
             ids = torch.where(is_mask, pred_ids, ids)
-            ids[:,none_edit_parts,:] = none_edit_ids
+
             '''
             Updating scores
             '''
             probs_without_temperature = logits.softmax(dim=-1)  # (b, seqlen, ntoken)
-            scores = probs_without_temperature.gather(3, pred_ids.unsqueeze(dim=-1))  # (b, seqlen, 1)
+            scores = probs_without_temperature.gather(2, pred_ids.unsqueeze(dim=-1))  # (b, seqlen, 1)
             scores = scores.squeeze(-1)  # (b, seqlen)
 
             # We do not want to re-mask the previously kept tokens, or pad tokens
             scores = scores.masked_fill(~edit_mask, 1e5) if mask_free else scores.masked_fill(~is_mask, 1e5)
 
-        ids = torch.where(padding_mask.unsqueeze(1), -1, ids)
+        ids = torch.where(padding_mask, -1, ids)
         # print("Final", ids.max(), ids.min())
         return ids
-
-    @torch.no_grad()
-    @eval_decorator
-    def long_range_alpha(self,
-             conds, #[n,4]
-             m_lens,
-             timesteps=10,
-             cond_scale=4.0,
-             num_transition_token=2,
-             index_motion=None,#[n,4,seq_len]
-             temperature=1,
-             topk_filter_thres=0.9,
-             gsample=False,
-             force_mask=False,
-             ):
-        bs = m_lens.shape[0]
-        seq_len = max(m_lens)
-        device = next(self.parameters()).device
-        if self.cond_mode == 'text':
-            with torch.no_grad():
-                if isinstance(conds,list):
-                    cond_vector = []
-                    for cond in conds:
-                        cond_vector_ = self.encode_text(cond)
-                        cond_vector.append(cond_vector_)
-                    cond_vector = torch.stack(cond_vector,dim=1)
-                else:
-                    cond_vector = self.encode_text(conds)
-        elif self.cond_mode == 'action':
-            cond_vector = self.enc_action(conds).to(device)
-        elif self.cond_mode == 'uncond':
-            cond_vector = torch.zeros(bs, self.latent_dim).float().to(device)
-        else:
-            raise NotImplementedError("Unsupported condition mode!!!")
-        
-        if index_motion is None:
-            index_motion = self.generate(cond_vector, m_lens=m_lens, timesteps=timesteps, cond_scale=cond_scale)
-
-        # seq_len = index_motion.shape[2]
-        half_token_length = (m_lens/2).int()
-        idx_full_len = half_token_length >= 24
-        half_token_length[idx_full_len] = half_token_length[idx_full_len] - 1
-
-        tokens = -1*torch.ones((bs-1, 4, seq_len), dtype=torch.long).cuda()
-        transition_train_length = []
-        for i in range(bs-1):
-            i_index_motion = index_motion[i]
-            i1_index_motion = index_motion[i+1]
-            left_end = half_token_length[i]
-            right_start = left_end + num_transition_token
-            end = right_start + half_token_length[i+1]
-            tokens[i, :, :left_end] = i_index_motion[:,m_lens[i]-left_end: m_lens[i]]
-            tokens[i, :, left_end:right_start] = self.mask_id
-            tokens[i, :, right_start:end] = i1_index_motion[:,:half_token_length[i+1]]
-            transition_train_length.append(end)
-
-        transition_train_length = torch.tensor(transition_train_length).to(index_motion[0].device)
-        inpaint_index = self.generate(conds[:-1], m_lens=transition_train_length, timesteps=timesteps, cond_scale=cond_scale, token_cond=tokens)
-
-        ids = []
-        for i in range(bs-1):
-            ids.append(index_motion[i, :, :m_lens[i].item()])
-            ids.append(inpaint_index[i, tokens[i] == self.mask_id].reshape(self.body_parts,-1))
-        ids.append(index_motion[-1, :, :m_lens[-1].item()])
-        ids = torch.cat(ids,dim=-1).unsqueeze(0)
-        return ids
-
 
     @torch.no_grad()
     @eval_decorator
