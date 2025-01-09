@@ -1,0 +1,15 @@
+# for rendering in blender python
+numpy==1.23.0
+pytest-shutil
+matplotlib
+tqdm
+hydra-core
+hydra_colorlog
+moviepy
+shortuuid
+six
+natsort
+smplx
+scipy
+h5py
+chumpy

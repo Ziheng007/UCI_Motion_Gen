@@ -1,0 +1,1 @@
+from .joints import humanml3d_joints, humanml3d_kinematic_tree,mmm_joints, mmm_kinematic_tree,mmm_to_smplh_scaling_factor,smplh_to_mmm_scaling_factor
