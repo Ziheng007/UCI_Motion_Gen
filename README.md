@@ -1,4 +1,4 @@
-# Self-Correcting Human Motion Synthesis with Video Analysis
+# UCI_Motion_Gen
 
 **For trajectory_guidance, please check my repository
 [trajectory_guidance](https://github.com/HuangZiheng-o-O/trajectory_guidance_pipeline_and_llm_enhanced_human_motion_generation)**
