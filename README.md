@@ -3,8 +3,6 @@
 **For trajectory_guidance, please check my repository
 [trajectory_guidance](https://github.com/HuangZiheng-o-O/trajectory_guidance_pipeline_and_llm_enhanced_human_motion_generation)**
 
-This project tackles the challenge of generating detailed and context-rich 3D human motions from textual descriptions beyond standard training data. The framework integrates a multi-agent system—powered by large language models and a vision-language module—to segment, synthesize, and refine motion outputs in an iterative loop. By employing a mask-transformer architecture with body part-specific encoders and codebooks, we achieve granular control over both short and extended motion sequences. After initial generation, an automated review process uses video-based captioning to identify discrepancies and generate corrective instructions, allowing each body region to be accurately adjusted. Experimental results on the HumanML3D benchmark demonstrate that this approach not only attains competitive performance against recent methods but excels in handling long-form prompts and multi-step motion compositions. Comprehensive user studies further indicate significant improvements in realism and fidelity for complex scenarios.
-
 A person does Bruce Lee's classic kicks, and runs forward with right arm extending forward, and trying to avoid sphere obstacles in his way.
 
 https://github.com/user-attachments/assets/10640905-bd8e-4d5b-b001-95ed92313004
